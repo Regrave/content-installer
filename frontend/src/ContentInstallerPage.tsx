@@ -15,9 +15,10 @@ import ServerContentContainer from '@/elements/containers/ServerContentContainer
 import { useServerStore } from '@/stores/server.ts';
 import BrowseTab from './BrowseTab.tsx';
 import ManageTab from './ManageTab.tsx';
+import ModpacksTab from './ModpacksTab.tsx';
 import { detectServer, getAvailableTabs, type ServerDetection } from './detect.ts';
 
-type MainTab = 'browse' | 'manage';
+type MainTab = 'browse' | 'manage' | 'modpacks';
 type ContentTab = 'plugins' | 'mods' | 'datapacks';
 
 const TAB_LABELS: Record<ContentTab, string> = {
@@ -61,15 +62,20 @@ export default function ContentInstallerPage() {
     if (contentTab === 'datapacks') {
       return `${selectedWorld}/datapacks`;
     }
-    return contentTab; // "plugins" or "mods"
+    return contentTab;
   };
+
+  // Show modpacks tab for mod-capable servers or unknown
+  const showModpacks = detection
+    ? detection.platform === 'mods' || detection.platform === 'both' || detection.platform === 'unknown' || detection.platform === 'vanilla'
+    : true;
 
   return (
     <ServerContentContainer title='Content Installer'>
       <div className='ci-page'>
         <div className='ci-page-header'>
           <Title order={3}>
-            {TAB_LABELS[contentTab]}
+            {mainTab === 'modpacks' ? 'Modpacks' : TAB_LABELS[contentTab]}
           </Title>
           <Group gap='sm'>
             {detection?.loader && detection.loader !== 'unknown' && (
@@ -92,10 +98,10 @@ export default function ContentInstallerPage() {
           </div>
         ) : (
           <>
-            {/* Content type + main tab selectors */}
+            {/* Tab selectors */}
             <div className='ci-tab-bar'>
-              {/* Content type selector (plugins / mods / datapacks) */}
-              {availableTabs.length > 1 && (
+              {/* Content type selector */}
+              {availableTabs.length > 1 && mainTab !== 'modpacks' && (
                 <SegmentedControl
                   value={contentTab}
                   onChange={(v) => setContentTab(v as ContentTab)}
@@ -104,20 +110,21 @@ export default function ContentInstallerPage() {
                 />
               )}
 
-              {/* Browse / Manage selector */}
+              {/* Main tab selector */}
               <SegmentedControl
                 value={mainTab}
                 onChange={(v) => setMainTab(v as MainTab)}
                 data={[
-                  { value: 'browse', label: `Browse` },
-                  { value: 'manage', label: `Installed` },
+                  { value: 'browse', label: 'Browse' },
+                  { value: 'manage', label: 'Installed' },
+                  ...(showModpacks ? [{ value: 'modpacks', label: 'Modpacks' }] : []),
                 ]}
                 className='ci-main-tabs'
               />
             </div>
 
             {/* World selector for datapacks */}
-            {contentTab === 'datapacks' && detection && detection.worldDirs.length > 1 && (
+            {contentTab === 'datapacks' && mainTab !== 'modpacks' && detection && detection.worldDirs.length > 1 && (
               <Group gap='sm' mb='sm'>
                 <Text size='sm' fw={500}>World:</Text>
                 <Select
@@ -160,6 +167,9 @@ export default function ContentInstallerPage() {
                 installDir={getInstallDir()}
                 refreshKey={manageRefreshKey}
               />
+            )}
+            {detection && mainTab === 'modpacks' && (
+              <ModpacksTab detection={detection} />
             )}
           </>
         )}
