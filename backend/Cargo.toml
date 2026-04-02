@@ -20,3 +20,4 @@ reqwest = { workspace = true }
 chrono = { workspace = true }
 url = "2"
 urlencoding = "2"
+sha1_smol = "1"

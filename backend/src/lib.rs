@@ -727,7 +727,90 @@ async fn run_modpack_install(
         }
     }
 
-    // Step 8: Write eula.txt
+    // Step 8: Scan mods/ for override jars that might be client-only.
+    // Overrides bypass our file-list filter, so we hash each unknown jar
+    // and check it against Modrinth's version_file API.
+    update_progress("installing_loader", total, total, "Checking override mods...").await;
+
+    // Build set of filenames we explicitly downloaded (known good)
+    let known_filenames: std::collections::HashSet<String> = installable_files
+        .iter()
+        .filter_map(|f| f.path.rsplit('/').next().map(|s| s.to_string()))
+        .collect();
+
+    let mods_entries = wings
+        .get_servers_server_files_list_directory(server_uuid, "/mods")
+        .await
+        .unwrap_or_default();
+
+    let mut override_jars_to_remove: Vec<String> = Vec::new();
+    for entry in &mods_entries {
+        if !entry.name.ends_with(".jar") { continue; }
+        if known_filenames.contains(entry.name.as_str()) { continue; }
+
+        // This jar came from overrides - read it and hash it
+        tracing::info!("Checking override mod: {}", entry.name);
+        if let Ok(mut file_data) = wings
+            .get_servers_server_files_contents(server_uuid, &format!("/mods/{}", entry.name), true, 50_000_000)
+            .await
+        {
+            let mut bytes = Vec::new();
+            if tokio::io::AsyncReadExt::read_to_end(&mut file_data, &mut bytes).await.is_ok() {
+                let hash = sha1_smol::Sha1::from(&bytes).digest().to_string();
+
+                // Look up the hash on Modrinth
+                if let Ok(resp) = http_client
+                    .get(format!("https://api.modrinth.com/v2/version_file/{hash}?algorithm=sha1"))
+                    .header("User-Agent", "IR77-ContentInstaller/1.0.0")
+                    .send()
+                    .await
+                {
+                    if resp.status().is_success() {
+                        if let Ok(version_data) = resp.json::<serde_json::Value>().await {
+                            let project_id = version_data["project_id"].as_str().unwrap_or("");
+                            if client_only_projects.contains(project_id) {
+                                tracing::info!("Removing client-only override mod: {} (project {})", entry.name, project_id);
+                                override_jars_to_remove.push(entry.name.to_string());
+                            } else if !project_id.is_empty() {
+                                // Project wasn't in our batch - check it individually
+                                if let Ok(proj_resp) = http_client
+                                    .get(format!("https://api.modrinth.com/v2/project/{project_id}"))
+                                    .header("User-Agent", "IR77-ContentInstaller/1.0.0")
+                                    .send()
+                                    .await
+                                {
+                                    if let Ok(proj) = proj_resp.json::<serde_json::Value>().await {
+                                        let server = proj["server_side"].as_str().unwrap_or("unknown");
+                                        let client = proj["client_side"].as_str().unwrap_or("unknown");
+                                        if server == "unsupported" || (server == "unknown" && client == "required") {
+                                            tracing::info!("Removing client-only override mod: {} [server={}, client={}]", entry.name, server, client);
+                                            override_jars_to_remove.push(entry.name.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete client-only override mods
+    if !override_jars_to_remove.is_empty() {
+        tracing::info!("Removing {} client-only override mods", override_jars_to_remove.len());
+        let _ = wings
+            .post_servers_server_files_delete(
+                server_uuid,
+                &wings_api::servers_server_files_delete::post::RequestBody {
+                    root: "/mods".into(),
+                    files: override_jars_to_remove.iter().map(|s| compact_str::CompactString::from(s.as_str())).collect(),
+                },
+            )
+            .await;
+    }
+
+    // Step 9: Write eula.txt
     let _ = wings
         .post_servers_server_files_write(
             server_uuid,
@@ -736,7 +819,7 @@ async fn run_modpack_install(
         )
         .await;
 
-    // Step 9: Write .mcvc-type.json marker
+    // Step 10: Write .mcvc-type.json marker
     {
         let loader_type = if index.dependencies.contains_key("fabric-loader") { "FABRIC" }
             else if index.dependencies.contains_key("quilt-loader") { "QUILT" }
@@ -758,7 +841,7 @@ async fn run_modpack_install(
             .await;
     }
 
-    // Step 10: Clean up temp files
+    // Step 11: Clean up temp files
     update_progress("done", total, total, "Cleaning up...").await;
     let _ = wings
         .post_servers_server_files_delete(
