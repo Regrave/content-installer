@@ -266,22 +266,6 @@ struct ModpackInstallParams {
     /// Whether to wipe the server first
     #[serde(default)]
     clean_install: bool,
-    /// MCJars server type for the loader (e.g. "FABRIC", "FORGE", "NEOFORGE")
-    #[serde(default)]
-    loader_type: Option<String>,
-    /// MCJars build URL for the loader jar (from version chooser MCJars API)
-    #[serde(default)]
-    loader_url: Option<String>,
-    /// Filename for the loader jar
-    #[serde(default = "default_jar_filename")]
-    loader_filename: String,
-    /// Whether the loader is a zip install (Forge/NeoForge)
-    #[serde(default)]
-    loader_unzip: bool,
-}
-
-fn default_jar_filename() -> String {
-    "server.jar".to_string()
 }
 
 /// POST: Install a modpack from an mrpack URL
@@ -578,10 +562,19 @@ async fn run_modpack_install(
         {
             if let Ok(projects) = resp.json::<Vec<serde_json::Value>>().await {
                 for p in &projects {
-                    if p["server_side"].as_str() == Some("unsupported") {
+                    let server = p["server_side"].as_str().unwrap_or("unknown");
+                    let client = p["client_side"].as_str().unwrap_or("unknown");
+
+                    // Skip if server_side is unsupported, OR if server is unknown but client is required
+                    // (a mod that's definitely needed client-side but unknown server-side is almost certainly client-only)
+                    let is_client_only = server == "unsupported"
+                        || (server == "unknown" && client == "required");
+
+                    if is_client_only {
                         if let Some(id) = p["id"].as_str() {
                             client_only_projects.insert(id.to_string());
-                            tracing::info!("Skipping client-only mod: {} ({})", p["title"].as_str().unwrap_or("?"), id);
+                            tracing::info!("Skipping client-only mod: {} ({}) [server={}, client={}]",
+                                p["title"].as_str().unwrap_or("?"), id, server, client);
                         }
                     }
                 }
