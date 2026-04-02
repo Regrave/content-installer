@@ -21,3 +21,4 @@ chrono = { workspace = true }
 url = "2"
 urlencoding = "2"
 sha1_smol = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }

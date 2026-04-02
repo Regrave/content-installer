@@ -756,9 +756,17 @@ async fn run_modpack_install(
         {
             let mut bytes = Vec::new();
             if tokio::io::AsyncReadExt::read_to_end(&mut file_data, &mut bytes).await.is_ok() {
-                let hash = sha1_smol::Sha1::from(&bytes).digest().to_string();
+                // Layer 1: JAR metadata inspection
+                // Check fabric.mod.json for "environment": "client"
+                // Check mods.toml for side="CLIENT" or displayTest="IGNORE_ALL_VERSION"
+                if modpack::is_client_only_jar(&bytes) {
+                    tracing::info!("Removing client-only override mod (JAR metadata): {}", entry.name);
+                    override_jars_to_remove.push(entry.name.to_string());
+                    continue;
+                }
 
-                // Look up the hash on Modrinth
+                // Layer 2: Modrinth hash lookup
+                let hash = sha1_smol::Sha1::from(&bytes).digest().to_string();
                 if let Ok(resp) = http_client
                     .get(format!("https://api.modrinth.com/v2/version_file/{hash}?algorithm=sha1"))
                     .header("User-Agent", "IR77-ContentInstaller/1.0.0")
@@ -769,10 +777,9 @@ async fn run_modpack_install(
                         if let Ok(version_data) = resp.json::<serde_json::Value>().await {
                             let project_id = version_data["project_id"].as_str().unwrap_or("");
                             if client_only_projects.contains(project_id) {
-                                tracing::info!("Removing client-only override mod: {} (project {})", entry.name, project_id);
+                                tracing::info!("Removing client-only override mod (Modrinth hash): {} (project {})", entry.name, project_id);
                                 override_jars_to_remove.push(entry.name.to_string());
                             } else if !project_id.is_empty() {
-                                // Project wasn't in our batch - check it individually
                                 if let Ok(proj_resp) = http_client
                                     .get(format!("https://api.modrinth.com/v2/project/{project_id}"))
                                     .header("User-Agent", "IR77-ContentInstaller/1.0.0")
@@ -783,7 +790,7 @@ async fn run_modpack_install(
                                         let server = proj["server_side"].as_str().unwrap_or("unknown");
                                         let client = proj["client_side"].as_str().unwrap_or("unknown");
                                         if server == "unsupported" || (server == "unknown" && client == "required") {
-                                            tracing::info!("Removing client-only override mod: {} [server={}, client={}]", entry.name, server, client);
+                                            tracing::info!("Removing client-only override mod (Modrinth project): {} [server={}, client={}]", entry.name, server, client);
                                             override_jars_to_remove.push(entry.name.to_string());
                                         }
                                     }

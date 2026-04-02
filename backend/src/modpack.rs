@@ -104,6 +104,71 @@ pub fn create_progress_map() -> ProgressMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
+// ─── JAR metadata inspection ─────────────────────────────────
+
+/// Check if a jar file is client-only by inspecting its metadata.
+/// Reads the jar as a zip and checks:
+///   - fabric.mod.json: "environment": "client" (Fabric/Quilt mods)
+///   - META-INF/mods.toml: side="CLIENT" or displayTest="IGNORE_ALL_VERSION" (Forge mods)
+///   - quilt.mod.json: "environment": "client" (Quilt mods)
+pub fn is_client_only_jar(jar_bytes: &[u8]) -> bool {
+    use std::io::{Cursor, Read};
+
+    let reader = Cursor::new(jar_bytes);
+    let mut archive = match zip::ZipArchive::new(reader) {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+
+    // Check fabric.mod.json (Fabric mods)
+    if let Ok(mut file) = archive.by_name("fabric.mod.json") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if json["environment"].as_str() == Some("client") {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Check quilt.mod.json (Quilt mods)
+    if let Ok(mut file) = archive.by_name("quilt.mod.json") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if json["quilt_loader"]["environment"].as_str() == Some("client") {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Check META-INF/mods.toml (Forge mods)
+    if let Ok(mut file) = archive.by_name("META-INF/mods.toml") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            let lower = contents.to_lowercase();
+            // side="CLIENT" means explicitly client-only
+            if lower.contains("side=\"client\"") || lower.contains("side = \"client\"") {
+                return true;
+            }
+            // displayTest="IGNORE_ALL_VERSION" generally means no server component
+            if lower.contains("displaytest=\"ignore_all_version\"")
+                || lower.contains("displaytest = \"ignore_all_version\"")
+            {
+                // Only flag as client-only if there's also a hint it's client-side
+                // (some server mods use IGNORE_ALL_VERSION too)
+                if lower.contains("client") && !lower.contains("server") {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 // ─── Allowed download domains for mrpack files ───────────────
 
 const ALLOWED_MRPACK_DOMAINS: &[&str] = &[
