@@ -2,7 +2,6 @@ import { faArrowDown, faBox, faCheck, faExclamationTriangle, faSearch, faSpinner
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Alert,
-  Badge,
   Checkbox,
   Group,
   Loader,
@@ -76,7 +75,6 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
       const res = await searchProjects({
         query: q || undefined,
         projectType: 'modpack',
-        gameVersions: detection.mcVersion ? [detection.mcVersion] : undefined,
         index: sort,
         offset,
         limit: 20,
@@ -112,9 +110,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
     setAcceptRisk(false);
 
     try {
-      const vers = await getProjectVersions(project.project_id, {
-        gameVersions: detection.mcVersion ? [detection.mcVersion] : undefined,
-      });
+      const vers = await getProjectVersions(project.project_id);
       setVersions(vers);
       const featured = vers.find((v) => v.featured) ?? vers[0];
       if (featured) setSelectedVersion(featured);
@@ -236,12 +232,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
         />
       </div>
 
-      {detection.mcVersion && (
-        <Group gap='xs' mt='xs' mb='sm'>
-          <Badge variant='light' color='gray' size='sm'>{detection.mcVersion}</Badge>
-          <Text size='xs' c='dimmed'>Showing modpacks for your Minecraft version</Text>
-        </Group>
-      )}
+      {/* No version/loader filtering for modpacks - they replace the entire server */}
 
       {/* Results */}
       {loading && results.length === 0 ? (
@@ -345,12 +336,12 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
                         {selectedFile.filename} &middot; {formatSize(selectedFile.size)}
                       </Text>
                     )}
-                    <Group gap='xs' mt={4}>
+                    <Group gap={4} mt={4} wrap='wrap'>
                       {loaderInfo && (
-                        <Badge variant='light' color='violet' size='xs'>{loaderInfo.name}</Badge>
+                        <span className='ci-tag ci-tag--violet'>{loaderInfo.name}</span>
                       )}
                       {selectedVersion.game_versions.slice(0, 3).map((v) => (
-                        <Badge key={v} variant='light' color='gray' size='xs'>{v}</Badge>
+                        <span key={v} className='ci-tag ci-tag--gray'>{v}</span>
                       ))}
                     </Group>
                     <Text size='xs' c='dimmed' mt={4}>

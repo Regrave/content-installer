@@ -336,6 +336,56 @@ async fn modpack_install(
     Ok(axum::Json(serde_json::json!({ "success": true })))
 }
 
+struct LoaderJar {
+    url: String,
+    is_zip: bool,
+}
+
+/// Resolve the loader server jar from the mrpack dependencies.
+/// Fabric/Quilt: meta API gives a single ready-to-run jar (direct download).
+/// Forge/NeoForge: MCJars provides zip bundles that need decompression.
+async fn resolve_loader_jar(dependencies: &std::collections::HashMap<String, String>, mc_version: &str) -> Option<LoaderJar> {
+    // Fabric: direct jar from meta API
+    if let Some(loader_ver) = dependencies.get("fabric-loader") {
+        return Some(LoaderJar {
+            url: format!("https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{loader_ver}/1.0.1/server/jar"),
+            is_zip: false,
+        });
+    }
+
+    // Quilt: direct jar from meta API
+    if let Some(loader_ver) = dependencies.get("quilt-loader") {
+        return Some(LoaderJar {
+            url: format!("https://meta.quiltmc.org/v3/versions/loader/{mc_version}/{loader_ver}/0.10.3/server/jar"),
+            is_zip: false,
+        });
+    }
+
+    // NeoForge: query MCJars for the zip URL
+    if dependencies.contains_key("neoforge") {
+        if let Ok(resp) = reqwest::get(format!("https://versions.mcjars.app/api/v2/builds/NEOFORGE/{mc_version}")).await {
+            if let Ok(data) = resp.json::<serde_json::Value>().await {
+                if let Some(zip_url) = data["builds"][0]["zipUrl"].as_str() {
+                    return Some(LoaderJar { url: zip_url.to_string(), is_zip: true });
+                }
+            }
+        }
+    }
+
+    // Forge: query MCJars for the zip URL
+    if dependencies.contains_key("forge") {
+        if let Ok(resp) = reqwest::get(format!("https://versions.mcjars.app/api/v2/builds/FORGE/{mc_version}")).await {
+            if let Ok(data) = resp.json::<serde_json::Value>().await {
+                if let Some(zip_url) = data["builds"][0]["zipUrl"].as_str() {
+                    return Some(LoaderJar { url: zip_url.to_string(), is_zip: true });
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Background task that runs the full modpack installation
 async fn run_modpack_install(
     wings: wings_api::client::WingsClient,
@@ -561,28 +611,22 @@ async fn run_modpack_install(
             .map_err(|e| format!("Failed to download {}: {e:?}", file.path))?;
     }
 
-    // Step 7: Install loader jar if provided
-    if let Some(loader_url) = &params.loader_url {
-        update_progress("installing_loader", total, total, "Installing server loader...").await;
+    // Step 7: Auto-install loader based on mrpack dependencies
+    update_progress("installing_loader", total, total, "Installing server loader...").await;
 
-        if params.loader_unzip {
-            // Zip-based install (Forge/NeoForge)
-            let _ = wings
-                .post_servers_server_files_delete(
-                    server_uuid,
-                    &wings_api::servers_server_files_delete::post::RequestBody {
-                        root: "/".into(),
-                        files: vec!["libraries".into()],
-                    },
-                )
-                .await;
+    let mc_version = index.minecraft_version().unwrap_or("1.21.1");
+    let loader_jar = resolve_loader_jar(&index.dependencies, mc_version).await;
+    tracing::info!("Loader jar resolved: {:?}", loader_jar.as_ref().map(|j| (&j.url, j.is_zip)));
 
+    if let Some(jar) = &loader_jar {
+        if jar.is_zip {
+            // Forge/NeoForge: download zip, decompress, clean up
             wings
                 .post_servers_server_files_pull(
                     server_uuid,
                     &wings_api::servers_server_files_pull::post::RequestBody {
                         root: "/".into(),
-                        url: loader_url.clone().into(),
+                        url: jar.url.clone().into(),
                         file_name: Some("_loader_install.zip".into()),
                         use_header: false,
                         foreground: true,
@@ -612,20 +656,22 @@ async fn run_modpack_install(
                 )
                 .await;
         } else {
-            // Simple jar install (Fabric)
-            wings
+            // Fabric/Quilt: single jar download
+            tracing::info!("Pulling loader jar from: {}", jar.url);
+            let pull_res = wings
                 .post_servers_server_files_pull(
                     server_uuid,
                     &wings_api::servers_server_files_pull::post::RequestBody {
                         root: "/".into(),
-                        url: loader_url.clone().into(),
-                        file_name: Some(params.loader_filename.clone().into()),
+                        url: jar.url.clone().into(),
+                        file_name: Some("server.jar".into()),
                         use_header: false,
                         foreground: true,
                     },
                 )
-                .await
-                .map_err(|e| format!("Failed to download loader: {e:?}"))?;
+                .await;
+            tracing::info!("Loader pull result: {:?}", pull_res.is_ok());
+            pull_res.map_err(|e| format!("Failed to download loader jar: {e:?}"))?;
         }
     }
 
@@ -639,8 +685,12 @@ async fn run_modpack_install(
         .await;
 
     // Step 9: Write .mcvc-type.json marker
-    if let Some(loader_type) = &params.loader_type {
-        let mc_version = index.minecraft_version().unwrap_or("unknown");
+    {
+        let loader_type = if index.dependencies.contains_key("fabric-loader") { "FABRIC" }
+            else if index.dependencies.contains_key("quilt-loader") { "QUILT" }
+            else if index.dependencies.contains_key("neoforge") { "NEOFORGE" }
+            else if index.dependencies.contains_key("forge") { "FORGE" }
+            else { "UNKNOWN" };
         let marker = serde_json::json!({
             "type": loader_type,
             "version": mc_version,
