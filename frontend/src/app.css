@@ -1,0 +1,183 @@
+/* ========================================
+   Content Installer
+   ======================================== */
+
+.ci-page {
+  max-width: 100%;
+}
+
+.ci-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ci-center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 0;
+}
+
+/* Tab bar */
+.ci-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ci-content-tabs,
+.ci-main-tabs {
+  background: transparent !important;
+}
+
+/* ========================================
+   Browse Tab
+   ======================================== */
+
+.ci-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ci-search-input {
+  flex: 1;
+}
+
+/* Results grid */
+.ci-results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.ci-project-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  transition: all 0.15s ease;
+}
+
+.ci-project-card:hover {
+  border-color: var(--mantine-color-dimmed);
+  background: var(--mantine-color-default-hover);
+}
+
+.ci-project-icon-wrap {
+  flex-shrink: 0;
+}
+
+.ci-project-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.ci-project-icon--placeholder {
+  background: var(--mantine-color-default-hover);
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.ci-project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ci-project-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Version info in modal */
+.ci-version-info {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+}
+
+/* ========================================
+   Manage Tab
+   ======================================== */
+
+.ci-installed-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ci-installed-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  transition: all 0.15s ease;
+}
+
+.ci-installed-card:hover {
+  border-color: var(--mantine-color-dimmed);
+  background: var(--mantine-color-default-hover);
+}
+
+.ci-installed-icon-wrap {
+  flex-shrink: 0;
+}
+
+.ci-installed-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ci-installed-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ========================================
+   Responsive
+   ======================================== */
+@media (max-width: 768px) {
+  .ci-search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ci-project-card,
+  .ci-installed-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .ci-project-actions,
+  .ci-installed-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .ci-tab-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
