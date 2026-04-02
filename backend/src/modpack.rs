@@ -7,14 +7,7 @@ use tokio::sync::Mutex;
 
 #[derive(Deserialize)]
 pub struct MrpackIndex {
-    #[serde(rename = "formatVersion")]
-    pub format_version: u32,
-    pub game: String,
     pub name: String,
-    #[serde(default)]
-    pub summary: Option<String>,
-    #[serde(rename = "versionId")]
-    pub version_id: String,
     pub files: Vec<MrpackFile>,
     #[serde(default)]
     pub dependencies: HashMap<String, String>,
@@ -23,23 +16,13 @@ pub struct MrpackIndex {
 #[derive(Deserialize)]
 pub struct MrpackFile {
     pub path: String,
-    pub hashes: MrpackHashes,
     #[serde(default)]
     pub env: Option<MrpackEnv>,
     pub downloads: Vec<String>,
-    #[serde(rename = "fileSize")]
-    pub file_size: u64,
-}
-
-#[derive(Deserialize)]
-pub struct MrpackHashes {
-    pub sha1: Option<String>,
-    pub sha512: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct MrpackEnv {
-    pub client: Option<String>,
     pub server: Option<String>,
 }
 
@@ -54,21 +37,6 @@ impl MrpackFile {
 }
 
 impl MrpackIndex {
-    /// Get the loader type from dependencies
-    pub fn loader_type(&self) -> Option<&str> {
-        if self.dependencies.contains_key("fabric-loader") {
-            Some("FABRIC")
-        } else if self.dependencies.contains_key("neoforge") {
-            Some("NEOFORGE")
-        } else if self.dependencies.contains_key("forge") {
-            Some("FORGE")
-        } else if self.dependencies.contains_key("quilt-loader") {
-            Some("QUILT")
-        } else {
-            None
-        }
-    }
-
     /// Get the Minecraft version from dependencies
     pub fn minecraft_version(&self) -> Option<&str> {
         self.dependencies.get("minecraft").map(|s| s.as_str())
@@ -77,11 +45,6 @@ impl MrpackIndex {
     /// Get server-side files only
     pub fn server_files(&self) -> Vec<&MrpackFile> {
         self.files.iter().filter(|f| f.is_server_side()).collect()
-    }
-
-    /// Total download size for server files
-    pub fn server_download_size(&self) -> u64 {
-        self.server_files().iter().map(|f| f.file_size).sum()
     }
 }
 

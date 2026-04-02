@@ -83,7 +83,7 @@ struct InstallParams {
 async fn install_content(
     state: GetState,
     permissions: GetPermissionManager,
-    mut server: GetServer,
+    server: GetServer,
     Query(params): Query<InstallParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     permissions
@@ -170,7 +170,7 @@ async fn install_content(
 async fn install_status(
     state: GetState,
     _permissions: GetPermissionManager,
-    mut server: GetServer,
+    server: GetServer,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let node = server
         .node
@@ -209,7 +209,7 @@ struct RemoveParams {
 async fn remove_content(
     state: GetState,
     permissions: GetPermissionManager,
-    mut server: GetServer,
+    server: GetServer,
     Query(params): Query<RemoveParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     permissions
@@ -288,7 +288,7 @@ fn default_jar_filename() -> String {
 async fn modpack_install(
     state: GetState,
     permissions: GetPermissionManager,
-    mut server: GetServer,
+    server: GetServer,
     Query(params): Query<ModpackInstallParams>,
     progress_map: modpack::ProgressMap,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
