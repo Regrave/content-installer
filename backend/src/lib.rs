@@ -540,9 +540,68 @@ async fn run_modpack_install(
         }
     }
 
-    // Step 6: Download mod files
+    // Step 6: Filter out client-only mods by checking Modrinth project metadata.
+    // Modpack authors often don't set the env field in the mrpack, but the individual
+    // projects on Modrinth DO have correct server_side fields.
+    update_progress("preparing", 0, 0, "Checking mod compatibility...").await;
+
     let server_files = index.server_files();
-    let total = server_files.len() as u32;
+
+    // Extract project IDs from download URLs (format: cdn.modrinth.com/data/{PROJECT_ID}/versions/...)
+    let mut file_project_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut all_project_ids: Vec<String> = Vec::new();
+    for file in &server_files {
+        for url in &file.downloads {
+            if let Some(start) = url.find("cdn.modrinth.com/data/") {
+                let rest = &url[start + 22..];
+                if let Some(end) = rest.find('/') {
+                    let pid = rest[..end].to_string();
+                    file_project_ids.insert(file.path.clone(), pid.clone());
+                    if !all_project_ids.contains(&pid) {
+                        all_project_ids.push(pid);
+                    }
+                }
+            }
+        }
+    }
+
+    // Batch fetch project metadata to check server_side field (80 per request)
+    let mut client_only_projects: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let http_client = reqwest::Client::new();
+    for chunk in all_project_ids.chunks(80) {
+        let ids_json = serde_json::to_string(chunk).unwrap_or_default();
+        if let Ok(resp) = http_client
+            .get(format!("https://api.modrinth.com/v2/projects?ids={}", urlencoding::encode(&ids_json)))
+            .header("User-Agent", "IR77-ContentInstaller/1.0.0")
+            .send()
+            .await
+        {
+            if let Ok(projects) = resp.json::<Vec<serde_json::Value>>().await {
+                for p in &projects {
+                    if p["server_side"].as_str() == Some("unsupported") {
+                        if let Some(id) = p["id"].as_str() {
+                            client_only_projects.insert(id.to_string());
+                            tracing::info!("Skipping client-only mod: {} ({})", p["title"].as_str().unwrap_or("?"), id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Filter to server-compatible files only
+    let installable_files: Vec<&modpack::MrpackFile> = server_files
+        .into_iter()
+        .filter(|f| {
+            match file_project_ids.get(&f.path) {
+                Some(pid) => !client_only_projects.contains(pid),
+                None => true, // No project ID found, install it
+            }
+        })
+        .collect();
+
+    let total = installable_files.len() as u32;
+    tracing::info!("Installing {total} mods ({} client-only skipped)", client_only_projects.len());
 
     // Ensure mods/ directory exists
     let _ = wings
@@ -555,7 +614,7 @@ async fn run_modpack_install(
         )
         .await;
 
-    for (i, file) in server_files.iter().enumerate() {
+    for (i, file) in installable_files.iter().enumerate() {
         // Validate path
         if !modpack::validate_path(&file.path) {
             tracing::warn!("Skipping file with invalid path: {}", file.path);
