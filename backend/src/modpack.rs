@@ -104,6 +104,79 @@ pub fn create_progress_map() -> ProgressMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
+// ─── Remote client-only mod exclusion list ──────────────────
+// Fetched from GitHub at runtime so the list can be updated without rebuilding.
+// Falls back to a minimal hardcoded list if the fetch fails.
+
+const EXCLUSION_LIST_URL: &str =
+    "https://raw.githubusercontent.com/regrave/content-installer/main/client-only-mods.json";
+
+/// Minimal fallback for when the remote list can't be fetched.
+const FALLBACK_PATTERNS: &[&str] = &[
+    "optifine", "sodium", "iris", "oculus", "rubidium", "embeddium",
+    "entityculling", "fpsreducer", "skinlayers3d", "notenoughanimations",
+    "ambientsounds", "fancymenu", "drippyloadingscreen", "blur",
+    "modmenu", "controlling", "betterf3", "mousetweaks", "freecam",
+    "litematica", "minihud", "tweakeroo", "citresewn", "continuity",
+    "chatheads", "reauth", "physicsmod", "xaerosminimap", "xaerosworldmap",
+    "roughlyenoughitems", "emi", "legendarytooltips", "betterthirdperson",
+    "dynamiclights", "ryoamiclights", "immediatelyfast", "reforgium",
+];
+
+#[derive(serde::Deserialize)]
+struct ExclusionList {
+    excludes: Vec<String>,
+}
+
+/// Fetch the client-only mod exclusion list from GitHub.
+/// Returns the remote list on success, or the hardcoded fallback on failure.
+pub async fn fetch_exclusion_list(http_client: &reqwest::Client) -> Vec<String> {
+    match http_client
+        .get(EXCLUSION_LIST_URL)
+        .header("User-Agent", "IR77-ContentInstaller/1.0.0")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<ExclusionList>().await {
+                Ok(list) => {
+                    tracing::info!("Loaded {} client-only mod patterns from remote list", list.excludes.len());
+                    list.excludes
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to parse remote exclusion list: {e}, using fallback");
+                    FALLBACK_PATTERNS.iter().map(|s| s.to_string()).collect()
+                }
+            }
+        }
+        Ok(resp) => {
+            tracing::warn!("Remote exclusion list returned {}, using fallback", resp.status());
+            FALLBACK_PATTERNS.iter().map(|s| s.to_string()).collect()
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch remote exclusion list: {e}, using fallback");
+            FALLBACK_PATTERNS.iter().map(|s| s.to_string()).collect()
+        }
+    }
+}
+
+/// Check if a filename matches the client-only exclusion list.
+pub fn is_known_client_only(filename: &str, exclusion_list: &[String]) -> bool {
+    let name_lower = filename
+        .rsplit('/')
+        .next()
+        .unwrap_or(filename)
+        .trim_end_matches(".jar")
+        .trim_end_matches(".zip")
+        .to_lowercase();
+    exclusion_list.iter().any(|pattern| {
+        name_lower.starts_with(pattern.as_str())
+            || name_lower.contains(&format!("-{pattern}"))
+            || name_lower.contains(&format!("_{pattern}"))
+    })
+}
+
 // ─── JAR metadata inspection ─────────────────────────────────
 
 /// Check if a jar file is client-only by inspecting its metadata.
@@ -144,24 +217,54 @@ pub fn is_client_only_jar(jar_bytes: &[u8]) -> bool {
         }
     }
 
-    // Check META-INF/mods.toml (Forge mods)
+    // Check META-INF/mods.toml (Forge/NeoForge mods)
     if let Ok(mut file) = archive.by_name("META-INF/mods.toml") {
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
             let lower = contents.to_lowercase();
-            // side="CLIENT" means explicitly client-only
+
+            // side="CLIENT" on any dependency means explicitly client-only
             if lower.contains("side=\"client\"") || lower.contains("side = \"client\"") {
-                return true;
-            }
-            // displayTest="IGNORE_ALL_VERSION" generally means no server component
-            if lower.contains("displaytest=\"ignore_all_version\"")
-                || lower.contains("displaytest = \"ignore_all_version\"")
-            {
-                // Only flag as client-only if there's also a hint it's client-side
-                // (some server mods use IGNORE_ALL_VERSION too)
-                if lower.contains("client") && !lower.contains("server") {
+                // Make sure there's no side="BOTH" or side="SERVER" that would indicate mixed
+                let has_both = lower.contains("side=\"both\"") || lower.contains("side = \"both\"");
+                let has_server = lower.contains("side=\"server\"") || lower.contains("side = \"server\"");
+                if !has_both && !has_server {
                     return true;
                 }
+            }
+
+            // displayTest="IGNORE_ALL_VERSION" is the strongest client-only signal
+            // for Forge 1.20.1 (before the explicit clientSideOnly field in 1.20.4).
+            // This tells the server "don't check if I'm installed on the client" which
+            // almost always means the mod is client-only or client-optional.
+            if lower.contains("displaytest=\"ignore_all_version\"")
+                || lower.contains("displaytest = \"ignore_all_version\"")
+                || lower.contains("displaytest=\"ignore_server_only\"")
+                || lower.contains("displaytest = \"ignore_server_only\"")
+            {
+                return true;
+            }
+        }
+    }
+
+    // Check META-INF/neoforge.mods.toml (NeoForge mods)
+    if let Ok(mut file) = archive.by_name("META-INF/neoforge.mods.toml") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            let lower = contents.to_lowercase();
+            if lower.contains("side=\"client\"") || lower.contains("side = \"client\"") {
+                let has_both = lower.contains("side=\"both\"") || lower.contains("side = \"both\"");
+                let has_server = lower.contains("side=\"server\"") || lower.contains("side = \"server\"");
+                if !has_both && !has_server {
+                    return true;
+                }
+            }
+            if lower.contains("displaytest=\"ignore_all_version\"")
+                || lower.contains("displaytest = \"ignore_all_version\"")
+                || lower.contains("displaytest=\"ignore_server_only\"")
+                || lower.contains("displaytest = \"ignore_server_only\"")
+            {
+                return true;
             }
         }
     }

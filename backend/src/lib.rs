@@ -549,9 +549,12 @@ async fn run_modpack_install(
         }
     }
 
+    // Fetch the client-only mod exclusion list from GitHub
+    let http_client = reqwest::Client::new();
+    let exclusion_list = modpack::fetch_exclusion_list(&http_client).await;
+
     // Batch fetch project metadata to check server_side field (80 per request)
     let mut client_only_projects: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let http_client = reqwest::Client::new();
     for chunk in all_project_ids.chunks(80) {
         let ids_json = serde_json::to_string(chunk).unwrap_or_default();
         if let Ok(resp) = http_client
@@ -586,10 +589,19 @@ async fn run_modpack_install(
     let installable_files: Vec<&modpack::MrpackFile> = server_files
         .into_iter()
         .filter(|f| {
-            match file_project_ids.get(&f.path) {
-                Some(pid) => !client_only_projects.contains(pid),
-                None => true, // No project ID found, install it
+            // Layer 1: Modrinth project metadata
+            if let Some(pid) = file_project_ids.get(&f.path) {
+                if client_only_projects.contains(pid) {
+                    return false;
+                }
             }
+            // Layer 2: Known client-only mod filename patterns
+            if modpack::is_known_client_only(&f.path, &exclusion_list) {
+                let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+                tracing::info!("Skipping known client-only mod (filename match): {}", filename);
+                return false;
+            }
+            true
         })
         .collect();
 
@@ -727,45 +739,43 @@ async fn run_modpack_install(
         }
     }
 
-    // Step 8: Scan mods/ for override jars that might be client-only.
-    // Overrides bypass our file-list filter, so we hash each unknown jar
-    // and check it against Modrinth's version_file API.
-    update_progress("installing_loader", total, total, "Checking override mods...").await;
-
-    // Build set of filenames we explicitly downloaded (known good)
-    let known_filenames: std::collections::HashSet<String> = installable_files
-        .iter()
-        .filter_map(|f| f.path.rsplit('/').next().map(|s| s.to_string()))
-        .collect();
+    // Step 8: Post-download scan of ALL jars in mods/ for client-only mods.
+    // This catches mods that slipped through earlier layers due to bad Modrinth
+    // metadata, missing env fields, or mods introduced via overrides.
+    // Uses: filename exclusion list, JAR metadata inspection, and Modrinth hash lookup.
+    update_progress("installing_loader", total, total, "Scanning for client-only mods...").await;
 
     let mods_entries = wings
         .get_servers_server_files_list_directory(server_uuid, "/mods")
         .await
         .unwrap_or_default();
 
-    let mut override_jars_to_remove: Vec<String> = Vec::new();
+    let mut jars_to_remove: Vec<String> = Vec::new();
     for entry in &mods_entries {
         if !entry.name.ends_with(".jar") { continue; }
-        if known_filenames.contains(entry.name.as_str()) { continue; }
 
-        // This jar came from overrides - read it and hash it
-        tracing::info!("Checking override mod: {}", entry.name);
+        // Check filename against hardcoded exclusion list
+        if modpack::is_known_client_only(entry.name.as_str(), &exclusion_list) {
+            tracing::info!("Removing known client-only mod (filename match): {}", entry.name);
+            jars_to_remove.push(entry.name.to_string());
+            continue;
+        }
+
+        // Read the jar to inspect metadata and hash it
         if let Ok(mut file_data) = wings
             .get_servers_server_files_contents(server_uuid, &format!("/mods/{}", entry.name), true, 50_000_000)
             .await
         {
             let mut bytes = Vec::new();
             if tokio::io::AsyncReadExt::read_to_end(&mut file_data, &mut bytes).await.is_ok() {
-                // Layer 1: JAR metadata inspection
-                // Check fabric.mod.json for "environment": "client"
-                // Check mods.toml for side="CLIENT" or displayTest="IGNORE_ALL_VERSION"
+                // JAR metadata inspection (fabric.mod.json, mods.toml, quilt.mod.json)
                 if modpack::is_client_only_jar(&bytes) {
-                    tracing::info!("Removing client-only override mod (JAR metadata): {}", entry.name);
-                    override_jars_to_remove.push(entry.name.to_string());
+                    tracing::info!("Removing client-only mod (JAR metadata): {}", entry.name);
+                    jars_to_remove.push(entry.name.to_string());
                     continue;
                 }
 
-                // Layer 2: Modrinth hash lookup
+                // Modrinth hash lookup for mods we don't already know about
                 let hash = sha1_smol::Sha1::from(&bytes).digest().to_string();
                 if let Ok(resp) = http_client
                     .get(format!("https://api.modrinth.com/v2/version_file/{hash}?algorithm=sha1"))
@@ -777,9 +787,10 @@ async fn run_modpack_install(
                         if let Ok(version_data) = resp.json::<serde_json::Value>().await {
                             let project_id = version_data["project_id"].as_str().unwrap_or("");
                             if client_only_projects.contains(project_id) {
-                                tracing::info!("Removing client-only override mod (Modrinth hash): {} (project {})", entry.name, project_id);
-                                override_jars_to_remove.push(entry.name.to_string());
-                            } else if !project_id.is_empty() {
+                                tracing::info!("Removing client-only mod (Modrinth hash, known project): {} (project {})", entry.name, project_id);
+                                jars_to_remove.push(entry.name.to_string());
+                            } else if !project_id.is_empty() && !file_project_ids.values().any(|v| v == project_id) {
+                                // Only fetch project metadata if we didn't already check this project
                                 if let Ok(proj_resp) = http_client
                                     .get(format!("https://api.modrinth.com/v2/project/{project_id}"))
                                     .header("User-Agent", "IR77-ContentInstaller/1.0.0")
@@ -790,8 +801,8 @@ async fn run_modpack_install(
                                         let server = proj["server_side"].as_str().unwrap_or("unknown");
                                         let client = proj["client_side"].as_str().unwrap_or("unknown");
                                         if server == "unsupported" || (server == "unknown" && client == "required") {
-                                            tracing::info!("Removing client-only override mod (Modrinth project): {} [server={}, client={}]", entry.name, server, client);
-                                            override_jars_to_remove.push(entry.name.to_string());
+                                            tracing::info!("Removing client-only mod (Modrinth project): {} [server={}, client={}]", entry.name, server, client);
+                                            jars_to_remove.push(entry.name.to_string());
                                         }
                                     }
                                 }
@@ -803,15 +814,15 @@ async fn run_modpack_install(
         }
     }
 
-    // Delete client-only override mods
-    if !override_jars_to_remove.is_empty() {
-        tracing::info!("Removing {} client-only override mods", override_jars_to_remove.len());
+    // Delete client-only mods
+    if !jars_to_remove.is_empty() {
+        tracing::info!("Removing {} client-only mods from final scan", jars_to_remove.len());
         let _ = wings
             .post_servers_server_files_delete(
                 server_uuid,
                 &wings_api::servers_server_files_delete::post::RequestBody {
                     root: "/mods".into(),
-                    files: override_jars_to_remove.iter().map(|s| compact_str::CompactString::from(s.as_str())).collect(),
+                    files: jars_to_remove.iter().map(|s| compact_str::CompactString::from(s.as_str())).collect(),
                 },
             )
             .await;

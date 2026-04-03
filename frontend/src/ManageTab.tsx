@@ -86,17 +86,57 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
         return;
       }
 
-      // Try to identify files via Modrinth hash lookup
-      // We need SHA-1 hashes, but we can't hash files from the frontend.
-      // Instead, build items without hash identification for now.
-      // We'll show all jar files and let users see what's installed.
-      const identified: IdentifiedContent[] = jarFiles.map((file) => ({
-        file,
-        version: null,
-        project: null,
-        latestVersion: null,
-        hasUpdate: false,
-      }));
+      // Hash each file via the panel fingerprint API, then identify via Modrinth
+      const hashResults = await Promise.all(
+        jarFiles.map(async (file) => {
+          try {
+            const { data } = await axiosInstance.get(`/api/client/servers/${server.uuid}/files/fingerprint`, {
+              params: { file: `/${installDir}/${file.name}`, algorithm: 'sha1' },
+            });
+            return { file, hash: data.fingerprint as string };
+          } catch {
+            return { file, hash: null };
+          }
+        }),
+      );
+
+      const validHashes = hashResults.filter((r) => r.hash !== null) as Array<{ file: InstalledFile; hash: string }>;
+      const hashToFile = new Map(validHashes.map((r) => [r.hash, r.file]));
+      const hashList = validHashes.map((r) => r.hash);
+
+      // Batch lookup on Modrinth
+      const versionsByHash = hashList.length > 0 ? await getVersionsFromHashes(hashList, 'sha1') : {};
+
+      // Collect project IDs for batch project detail fetch
+      const projectIds = [...new Set(Object.values(versionsByHash).map((v) => v.project_id))];
+      const projectsList = await getProjects(projectIds);
+      const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
+
+      // Fetch latest compatible versions for each identified project
+      const latestVersionsMap = new Map<string, ModrinthVersion | null>();
+      await Promise.all(
+        projectIds.map(async (pid) => {
+          try {
+            const versions = await getProjectVersions(pid, {
+              loaders,
+              gameVersions: detection.mcVersion ? [detection.mcVersion] : undefined,
+            });
+            latestVersionsMap.set(pid, versions.length > 0 ? versions[0] : null);
+          } catch {
+            latestVersionsMap.set(pid, null);
+          }
+        }),
+      );
+
+      // Build identified items
+      const identified: IdentifiedContent[] = jarFiles.map((file) => {
+        const hashEntry = hashResults.find((r) => r.file === file);
+        const version = hashEntry?.hash ? versionsByHash[hashEntry.hash] ?? null : null;
+        const project = version ? projectsMap.get(version.project_id) ?? null : null;
+        const latestVersion = version ? latestVersionsMap.get(version.project_id) ?? null : null;
+        const hasUpdate = !!(version && latestVersion && latestVersion.id !== version.id);
+        return { file, version, project, latestVersion, hasUpdate };
+      });
 
       setItems(identified);
     } catch (err) {
@@ -105,7 +145,7 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
     } finally {
       setLoading(false);
     }
-  }, [server.uuid, contentType]);
+  }, [server.uuid, contentType, installDir, loaders, detection.mcVersion]);
 
   useEffect(() => {
     loadInstalled();
