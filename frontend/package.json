@@ -1,11 +1,12 @@
 {
   "name": "gg_content_installer",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
+    "marked": "^15.0.0",
     "shared": "workspace:*"
   }
 }

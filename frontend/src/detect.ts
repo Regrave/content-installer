@@ -40,6 +40,26 @@ export const LOADER_TO_MODRINTH: Record<ServerLoader, string[]> = {
   unknown: [],
 };
 
+/** Map from loader to CurseForge modLoaderType enum value (0=Any, 1=Forge, 4=Fabric, 5=Quilt, 6=NeoForge) */
+export const LOADER_TO_CURSEFORGE: Record<ServerLoader, number> = {
+  vanilla: 0,
+  paper: 0,
+  spigot: 0,
+  bukkit: 0,
+  purpur: 0,
+  pufferfish: 0,
+  folia: 0,
+  leaves: 0,
+  fabric: 4,
+  forge: 1,
+  neoforge: 6,
+  quilt: 5,
+  mohist: 1,
+  arclight: 1,
+  sponge: 0,
+  unknown: 0,
+};
+
 /** Whether a loader supports plugins, mods, or both */
 export const LOADER_PLATFORM: Record<ServerLoader, ServerPlatform> = {
   vanilla: 'vanilla',

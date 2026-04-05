@@ -67,7 +67,7 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
     try {
       // List files in plugins/ or mods/ directory
       const { data } = await axiosInstance.get(`/api/client/servers/${server.uuid}/files/list`, {
-        params: { directory: `/${installDir}`, page: 1, per_page: 200, sort: 'name_asc' },
+        params: { directory: `/${installDir}`, page: 1, per_page: 100, sort: 'name_asc' },
       });
 
       const entries = (data.entries?.data ?? []) as Array<{

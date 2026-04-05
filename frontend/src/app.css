@@ -51,32 +51,37 @@
   flex: 1;
 }
 
-/* Results grid */
+/* Card grid */
 .ci-results-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
   margin-top: 12px;
 }
 
 .ci-project-card {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  flex-direction: column;
+  padding: 16px;
   border-radius: var(--mantine-radius-md);
   border: 1px solid var(--mantine-color-default-border);
   background: var(--mantine-color-body);
   transition: all 0.15s ease;
+  cursor: pointer;
+  min-height: 0;
 }
 
 .ci-project-card:hover {
   border-color: var(--mantine-color-dimmed);
   background: var(--mantine-color-default-hover);
+  transform: translateY(-1px);
 }
 
-.ci-project-icon-wrap {
-  flex-shrink: 0;
+.ci-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .ci-project-icon {
@@ -84,6 +89,7 @@
   height: 40px;
   border-radius: 8px;
   object-fit: cover;
+  flex-shrink: 0;
 }
 
 .ci-project-icon--placeholder {
@@ -91,16 +97,161 @@
   border: 1px solid var(--mantine-color-default-border);
 }
 
-.ci-project-info {
+.ci-card-title {
   flex: 1;
   min-width: 0;
 }
 
-.ci-project-actions {
-  flex-shrink: 0;
+.ci-card-body {
+  flex: 1;
+  margin-bottom: 10px;
+}
+
+.ci-card-footer {
   display: flex;
-  gap: 6px;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Modal - no header, just floating X */
+.ci-modal-header {
+  position: absolute !important;
+  top: 0;
+  right: 0;
+  left: unset !important;
+  width: auto !important;
+  padding: 12px !important;
+  min-height: unset !important;
+  background: none !important;
+  border: none !important;
+  z-index: 10;
+}
+
+.ci-modal-body {
+  padding-top: var(--mantine-spacing-lg) !important;
+}
+
+/* Detail modal */
+.ci-detail-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ci-detail-top-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ci-detail-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-right: 32px;
+  margin-top: 6px;
+}
+
+.ci-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.ci-detail-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.ci-detail-icon--placeholder {
+  background: var(--mantine-color-default-hover);
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.ci-detail-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.ci-detail-body {
+  padding: 16px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--mantine-color-dimmed);
+}
+
+.ci-detail-body h1,
+.ci-detail-body h2,
+.ci-detail-body h3,
+.ci-detail-body h4 {
+  color: var(--mantine-color-text);
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.ci-detail-body h1 { font-size: 1.2rem; }
+.ci-detail-body h2 { font-size: 1.05rem; }
+.ci-detail-body h3 { font-size: 0.95rem; }
+
+.ci-detail-body p {
+  margin-bottom: 8px;
+}
+
+.ci-detail-body ul, .ci-detail-body ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+  list-style: revert;
+}
+
+.ci-detail-body li {
+  margin-bottom: 2px;
+}
+
+.ci-detail-body a {
+  color: var(--mantine-color-anchor);
+}
+
+.ci-detail-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+
+.ci-detail-body code {
+  background: rgba(139, 92, 246, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.ci-detail-body pre {
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  margin-bottom: 8px;
+}
+
+.ci-detail-body pre code {
+  background: none;
+  padding: 0;
 }
 
 /* Version info in modal */
@@ -154,7 +305,7 @@
   flex-wrap: wrap;
 }
 
-/* Tags (non-clipping alternative to Mantine Badge) */
+/* Tags */
 .ci-tag {
   display: inline-block;
   font-size: 9px;
@@ -180,20 +331,34 @@
 /* ========================================
    Responsive
    ======================================== */
+@media (max-width: 1400px) {
+  .ci-results-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .ci-results-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
+  .ci-results-grid {
+    grid-template-columns: 1fr;
+  }
+
   .ci-search-bar {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .ci-project-card,
   .ci-installed-card {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
 
-  .ci-project-actions,
   .ci-installed-actions {
     width: 100%;
     justify-content: flex-end;

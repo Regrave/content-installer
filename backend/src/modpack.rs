@@ -272,6 +272,77 @@ pub fn is_client_only_jar(jar_bytes: &[u8]) -> bool {
     false
 }
 
+// ─── CurseForge Manifest Types ──────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CfManifest {
+    pub name: String,
+    pub files: Vec<CfManifestFile>,
+    pub minecraft: CfManifestMinecraft,
+    #[serde(default = "default_overrides")]
+    pub overrides: String,
+}
+
+fn default_overrides() -> String {
+    "overrides".to_string()
+}
+
+#[derive(Deserialize)]
+pub struct CfManifestFile {
+    #[serde(rename = "projectID")]
+    pub project_id: u32,
+    #[serde(rename = "fileID")]
+    pub file_id: u32,
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+pub struct CfManifestMinecraft {
+    pub version: String,
+    #[serde(default, rename = "modLoaders")]
+    pub mod_loaders: Vec<CfManifestModLoader>,
+}
+
+#[derive(Deserialize)]
+pub struct CfManifestModLoader {
+    pub id: String,
+    #[serde(default)]
+    pub primary: bool,
+}
+
+impl CfManifest {
+    /// Get the primary mod loader ID (e.g. "forge-47.3.0", "fabric-0.16.0", "neoforge-21.1.77")
+    pub fn primary_loader(&self) -> Option<&str> {
+        self.minecraft
+            .mod_loaders
+            .iter()
+            .find(|l| l.primary)
+            .or(self.minecraft.mod_loaders.first())
+            .map(|l| l.id.as_str())
+    }
+
+    /// Determine loader type from the loader ID string
+    pub fn loader_type(&self) -> &str {
+        let loader = self.primary_loader().unwrap_or("");
+        if loader.starts_with("forge-") {
+            "FORGE"
+        } else if loader.starts_with("neoforge-") {
+            "NEOFORGE"
+        } else if loader.starts_with("fabric-") {
+            "FABRIC"
+        } else if loader.starts_with("quilt-") {
+            "QUILT"
+        } else {
+            "UNKNOWN"
+        }
+    }
+}
+
 // ─── Allowed download domains for mrpack files ───────────────
 
 const ALLOWED_MRPACK_DOMAINS: &[&str] = &[
