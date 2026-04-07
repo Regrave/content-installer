@@ -1,17 +1,16 @@
 import { faArrowUp, faExternalLink, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  Alert,
-  Badge,
   Group,
   Loader,
-  Modal,
-  Stack,
   Text,
 } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
 import { axiosInstance } from '@/api/axios.ts';
+import Alert from '@/elements/Alert.tsx';
 import Button from '@/elements/Button.tsx';
+import Card from '@/elements/Card.tsx';
+import ConfirmationModal from '@/elements/modals/ConfirmationModal.tsx';
 import { useToast } from '@/providers/ToastProvider.tsx';
 import { useServerStore } from '@/stores/server.ts';
 import type { ServerDetection } from './detect.ts';
@@ -246,7 +245,7 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
       ) : (
         <div className='ci-installed-grid'>
           {items.map((item) => (
-            <div key={item.file.name} className='ci-installed-card'>
+            <Card key={item.file.name} p='sm' className='ci-installed-card'>
               <div className='ci-installed-icon-wrap'>
                 {item.project?.icon_url ? (
                   <img src={item.project.icon_url} alt='' className='ci-project-icon' />
@@ -301,34 +300,25 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
                   Remove
                 </Button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       {/* Confirm remove modal */}
-      <Modal
+      <ConfirmationModal
         opened={!!confirmRemove}
         onClose={() => setConfirmRemove(null)}
         title={<Text fw={600}>Remove {confirmRemove?.project?.title ?? confirmRemove?.file.name}</Text>}
-        size='sm'
-        centered
+        confirm='Remove'
+        confirmColor='red'
+        onConfirmed={() => confirmRemove && doRemove(confirmRemove)}
       >
-        {confirmRemove && (
-          <Stack gap='md'>
-            <Text size='sm'>
-              This will delete <strong>{confirmRemove.file.name}</strong> from the {contentType} directory.
-              This cannot be undone.
-            </Text>
-            <Group justify='flex-end'>
-              <Button variant='subtle' onClick={() => setConfirmRemove(null)}>Cancel</Button>
-              <Button color='red' onClick={() => doRemove(confirmRemove)}>
-                Remove
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+        <Text size='sm'>
+          This will delete <strong>{confirmRemove?.file.name}</strong> from the {contentType} directory.
+          This cannot be undone.
+        </Text>
+      </ConfirmationModal>
     </div>
   );
 }

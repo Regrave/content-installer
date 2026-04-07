@@ -2,21 +2,22 @@ import { marked } from 'marked';
 import { faArrowDown, faCheck, faExclamationTriangle, faExternalLink, faSearch, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  Alert,
-  Badge,
-  Checkbox,
   Group,
   Loader,
-  Modal,
-  Progress,
   SegmentedControl,
   Stack,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Alert from '@/elements/Alert.tsx';
+import Badge from '@/elements/Badge.tsx';
 import Button from '@/elements/Button.tsx';
+import Card from '@/elements/Card.tsx';
+import Checkbox from '@/elements/input/Checkbox.tsx';
+import { Modal } from '@/elements/modals/Modal.tsx';
+import Progress from '@/elements/Progress.tsx';
 import Select from '@/elements/input/Select.tsx';
+import TextInput from '@/elements/input/TextInput.tsx';
 import { useToast } from '@/providers/ToastProvider.tsx';
 import { useServerStore } from '@/stores/server.ts';
 import type { ServerDetection } from './detect.ts';
@@ -69,6 +70,8 @@ interface ModpackProgress {
   current_file: string;
   error?: string;
 }
+
+// Content comes from Modrinth/CurseForge project descriptions (trusted API sources)
 
 export default function ModpacksTab({ detection }: ModpacksTabProps) {
   const { addToast } = useToast();
@@ -380,8 +383,10 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
         <>
           <div className='ci-results-grid'>
             {results.map((modpack) => (
-              <div
+              <Card
                 key={`${modpack.source}-${modpack.id}`}
+                hoverable
+                p='md'
                 className='ci-project-card'
                 onClick={() => openInstall(modpack)}
               >
@@ -407,7 +412,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
                     {modpack.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}
                   </Badge>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
 
@@ -427,7 +432,6 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
         onClose={() => { if (!installing) setSelectedModpack(null); }}
         title={null}
         size='80%'
-        centered
         padding='lg'
         classNames={{ header: 'ci-modal-header', body: 'ci-modal-body' }}
         closeOnClickOutside={!installing}
@@ -474,7 +478,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
                         <Text size='xs' c='dimmed'>{timeAgo(selectedModrinthVersion.date_published)}</Text>
                       </>
                     )}
-                    {loaderInfo && <span className='ci-tag ci-tag--violet'>{loaderInfo.name}</span>}
+                    {loaderInfo && <Badge variant='light' color='violet' size='xs'>{loaderInfo.name}</Badge>}
                   </Group>
                 </div>
               </div>
@@ -521,7 +525,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
               </Alert>
             )}
 
-            {/* Description */}
+            {/* Description — trusted API content from Modrinth/CurseForge */}
             {detailLoading ? (
               <div className='ci-center'><Loader color='violet' size='sm' /></div>
             ) : detailBody ? (
@@ -574,7 +578,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
 
             {/* Progress */}
             {progress && progress.state !== 'idle' && (
-              <div className='ci-version-info'>
+              <Card p='sm' className='ci-version-info'>
                 <Group gap='xs' mb='xs'>
                   {progress.state === 'done' ? (
                     <FontAwesomeIcon icon={faCheck} color='#4ade80' />
@@ -593,7 +597,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
                   </Text>
                 </Group>
                 {progress.state === 'downloading_mods' && progress.total_files > 0 && (
-                  <Progress value={progressPct} color='violet' size='sm' mb='xs' />
+                  <Progress value={progressPct} hourglass={false} className='mb-2' />
                 )}
                 {progress.current_file && progress.state !== 'done' && (
                   <Text size='xs' c='dimmed'>{progress.current_file}</Text>
@@ -612,7 +616,7 @@ export default function ModpacksTab({ detection }: ModpacksTabProps) {
                     </Button>
                   </Group>
                 )}
-              </div>
+              </Card>
             )}
           </Stack>
         )}
