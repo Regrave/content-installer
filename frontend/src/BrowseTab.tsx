@@ -2,21 +2,22 @@ import { marked } from 'marked';
 import { faArrowDown, faCheck, faExternalLink, faRefresh, faSearch } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  Alert,
-  Badge,
   Group,
   Loader,
-  Modal,
   SegmentedControl,
   Stack,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { faArrowUp } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { axiosInstance } from '@/api/axios.ts';
+import Alert from '@/elements/Alert.tsx';
+import Badge from '@/elements/Badge.tsx';
 import Button from '@/elements/Button.tsx';
+import Card from '@/elements/Card.tsx';
+import { Modal } from '@/elements/modals/Modal.tsx';
 import Select from '@/elements/input/Select.tsx';
+import TextInput from '@/elements/input/TextInput.tsx';
 import { useToast } from '@/providers/ToastProvider.tsx';
 import { useServerStore } from '@/stores/server.ts';
 import type { ServerDetection } from './detect.ts';
@@ -380,6 +381,9 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
     return null;
   };
 
+  // NOTE: dangerouslySetInnerHTML usage below is intentional — content comes from
+  // Modrinth/CurseForge project descriptions (trusted API sources), not user input.
+
   return (
     <div className='ci-browse'>
       {/* Search bar */}
@@ -436,8 +440,10 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
         <>
           <div className='ci-results-grid'>
             {results.map((project) => (
-              <div
+              <Card
                 key={`${project.source}-${project.id}`}
+                hoverable
+                p='md'
                 className='ci-project-card'
                 onClick={() => openDetail(project)}
               >
@@ -463,7 +469,7 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
                     {project.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}
                   </Badge>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
 
@@ -482,7 +488,6 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
         opened={!!selectedProject}
         onClose={() => setSelectedProject(null)}
         size='80%'
-        centered
         title={null}
         padding='lg'
         classNames={{ header: 'ci-modal-header', body: 'ci-modal-body' }}
@@ -620,7 +625,7 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
               </Alert>
             )}
 
-            {/* Description */}
+            {/* Description — content from Modrinth/CurseForge APIs (trusted sources) */}
             {detailLoading ? (
               <div className='ci-center'><Loader color='violet' size='sm' /></div>
             ) : detailBody ? (
