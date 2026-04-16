@@ -4,10 +4,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Group,
   Loader,
-  SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
+import SegmentedControl from '@/elements/SegmentedControl.tsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from '@/elements/Alert.tsx';
 import Badge from '@/elements/Badge.tsx';

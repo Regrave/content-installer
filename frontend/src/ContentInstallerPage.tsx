@@ -3,10 +3,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Group,
   Loader,
-  SegmentedControl,
   Text,
   Title,
 } from '@mantine/core';
+import SegmentedControl from '@/elements/SegmentedControl.tsx';
 import Alert from '@/elements/Alert.tsx';
 import Badge from '@/elements/Badge.tsx';
 import Select from '@/elements/input/Select.tsx';

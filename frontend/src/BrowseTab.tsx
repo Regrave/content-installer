@@ -4,10 +4,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Group,
   Loader,
-  SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
+import SegmentedControl from '@/elements/SegmentedControl.tsx';
 import { faArrowUp } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { axiosInstance } from '@/api/axios.ts';
