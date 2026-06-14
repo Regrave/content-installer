@@ -2,11 +2,8 @@ import { marked } from 'marked';
 import { faArrowDown, faCheck, faExclamationTriangle, faExternalLink, faSearch, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  Group,
   Loader,
   SegmentedControl,
-  Stack,
-  Text,
 } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from '@/elements/Alert.tsx';
@@ -14,9 +11,12 @@ import Badge from '@/elements/Badge.tsx';
 import Button from '@/elements/Button.tsx';
 import Card from '@/elements/Card.tsx';
 import Checkbox from '@/elements/input/Checkbox.tsx';
+import Group from '@/elements/Group.tsx';
 import { Modal } from '@/elements/modals/Modal.tsx';
 import Progress from '@/elements/Progress.tsx';
 import Select from '@/elements/input/Select.tsx';
+import Stack from '@/elements/Stack.tsx';
+import Text from '@/elements/Text.tsx';
 import TextInput from '@/elements/input/TextInput.tsx';
 import { useToast } from '@/providers/ToastProvider.tsx';
 import { useServerStore } from '@/stores/server.ts';

@@ -1,15 +1,13 @@
 import { faArrowUp, faExternalLink, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  Group,
-  Loader,
-  Text,
-} from '@mantine/core';
+import { Loader } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
 import { axiosInstance } from '@/api/axios.ts';
 import Alert from '@/elements/Alert.tsx';
 import Button from '@/elements/Button.tsx';
 import Card from '@/elements/Card.tsx';
+import Group from '@/elements/Group.tsx';
+import Text from '@/elements/Text.tsx';
 import ConfirmationModal from '@/elements/modals/ConfirmationModal.tsx';
 import { useToast } from '@/providers/ToastProvider.tsx';
 import { useServerStore } from '@/stores/server.ts';

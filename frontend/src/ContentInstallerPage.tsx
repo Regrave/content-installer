@@ -1,15 +1,15 @@
 import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  Group,
   Loader,
   SegmentedControl,
-  Text,
-  Title,
 } from '@mantine/core';
 import Alert from '@/elements/Alert.tsx';
 import Badge from '@/elements/Badge.tsx';
+import Group from '@/elements/Group.tsx';
 import Select from '@/elements/input/Select.tsx';
+import Text from '@/elements/Text.tsx';
+import Title from '@/elements/Title.tsx';
 import { useEffect, useState } from 'react';
 import ServerContentContainer from '@/elements/containers/ServerContentContainer.tsx';
 import { useServerStore } from '@/stores/server.ts';
