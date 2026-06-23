@@ -9,7 +9,7 @@ use shared::{
     extensions::{Extension, ExtensionRouteBuilder},
     models::{
         server::GetServer,
-        user::GetPermissionManager,
+        user::{GetPermissionManager, GetUser},
     },
     State,
 };
@@ -75,8 +75,8 @@ impl Extension for ExtensionStruct {
                         "/content-installer/modpack/install",
                         axum::routing::post({
                             let pi = pi.clone();
-                            move |state, perms, server, query| {
-                                modpack_install(state, perms, server, query, pi.clone())
+                            move |state, perms, user, server, query| {
+                                modpack_install(state, perms, user, server, query, pi.clone())
                             }
                         }),
                     )
@@ -84,8 +84,8 @@ impl Extension for ExtensionStruct {
                         "/content-installer/modpack/cf-install",
                         axum::routing::post({
                             let pi2 = pi.clone();
-                            move |state, perms, server, query| {
-                                cf_modpack_install(state, perms, server, query, pi2.clone())
+                            move |state, perms, user, server, query| {
+                                cf_modpack_install(state, perms, user, server, query, pi2.clone())
                             }
                         }),
                     )
@@ -382,6 +382,7 @@ struct ModpackInstallParams {
 async fn modpack_install(
     state: GetState,
     permissions: GetPermissionManager,
+    user: GetUser,
     server: GetServer,
     Query(params): Query<ModpackInstallParams>,
     progress_map: modpack::ProgressMap,
@@ -413,11 +414,12 @@ async fn modpack_install(
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")))?;
 
     let server_uuid = server.uuid;
+    let user_uuid = user.uuid;
     let pm = progress_map.clone();
 
     // Spawn the installation as a background task
     tokio::spawn(async move {
-        let result = run_modpack_install(wings, server_uuid, params, pm.clone()).await;
+        let result = run_modpack_install(wings, server_uuid, user_uuid, params, pm.clone()).await;
         if let Err(e) = result {
             let mut map = pm.lock().await;
             if let Some(prog) = map.get_mut(&server_uuid) {
@@ -484,6 +486,7 @@ async fn resolve_loader_jar(dependencies: &std::collections::HashMap<String, Str
 async fn run_modpack_install(
     wings: wings_api::client::WingsClient,
     server_uuid: uuid::Uuid,
+    user_uuid: uuid::Uuid,
     params: ModpackInstallParams,
     progress_map: modpack::ProgressMap,
 ) -> Result<(), String> {
@@ -943,6 +946,7 @@ async fn run_modpack_install(
         .post_servers_server_files_write(
             server_uuid,
             "/eula.txt",
+            user_uuid,
             "eula=true\n".into(),
         )
         .await;
@@ -964,6 +968,7 @@ async fn run_modpack_install(
             .post_servers_server_files_write(
                 server_uuid,
                 "/.mcvc-type.json",
+                user_uuid,
                 serde_json::to_string(&marker).unwrap_or_default().into(),
             )
             .await;
@@ -1007,6 +1012,7 @@ struct CfModpackInstallParams {
 async fn cf_modpack_install(
     state: GetState,
     permissions: GetPermissionManager,
+    user: GetUser,
     server: GetServer,
     Query(params): Query<CfModpackInstallParams>,
     progress_map: modpack::ProgressMap,
@@ -1055,10 +1061,11 @@ async fn cf_modpack_install(
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")))?;
 
     let server_uuid = server.uuid;
+    let user_uuid = user.uuid;
     let pm = progress_map.clone();
 
     tokio::spawn(async move {
-        let result = run_cf_modpack_install(wings, server_uuid, params, cf_api_key, pm.clone()).await;
+        let result = run_cf_modpack_install(wings, server_uuid, user_uuid, params, cf_api_key, pm.clone()).await;
         if let Err(e) = result {
             let mut map = pm.lock().await;
             if let Some(prog) = map.get_mut(&server_uuid) {
@@ -1074,6 +1081,7 @@ async fn cf_modpack_install(
 async fn run_cf_modpack_install(
     wings: wings_api::client::WingsClient,
     server_uuid: uuid::Uuid,
+    user_uuid: uuid::Uuid,
     params: CfModpackInstallParams,
     cf_api_key: String,
     progress_map: modpack::ProgressMap,
@@ -1432,7 +1440,7 @@ async fn run_cf_modpack_install(
 
     // Step 9: Write eula.txt
     let _ = wings
-        .post_servers_server_files_write(server_uuid, "/eula.txt", "eula=true\n".into())
+        .post_servers_server_files_write(server_uuid, "/eula.txt", user_uuid, "eula=true\n".into())
         .await;
 
     // Step 10: Write .mcvc-type.json marker
@@ -1448,6 +1456,7 @@ async fn run_cf_modpack_install(
             .post_servers_server_files_write(
                 server_uuid,
                 "/.mcvc-type.json",
+                user_uuid,
                 serde_json::to_string(&marker).unwrap_or_default().into(),
             )
             .await;
