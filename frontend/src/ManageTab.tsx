@@ -239,7 +239,7 @@ export default function ManageTab({ detection, contentType, installDir, refreshK
         <div className='ci-center'><Loader color='violet' size='lg' /></div>
       ) : items.length === 0 ? (
         <Text c='dimmed' ta='center' mt='xl'>
-          No {contentType === 'plugins' ? 'plugins' : 'mods'} installed.
+          No {contentType} installed.
           Browse and install some from the Browse tab!
         </Text>
       ) : (

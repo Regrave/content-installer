@@ -52,6 +52,9 @@ export default function ContentInstallerPage() {
       setAvailableTabs(tabs);
       setContentTab(tabs[0]);
       setSelectedWorld(result.worldDir);
+      const willShowModpacks = result.platform === 'mods' || result.platform === 'both'
+        || result.platform === 'unknown' || result.platform === 'vanilla';
+      if (!willShowModpacks) setMainTab('browse');
     }).finally(() => setDetecting(false));
   }, [server.uuid]);
 
