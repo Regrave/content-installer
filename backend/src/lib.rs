@@ -106,6 +106,10 @@ impl Extension for ExtensionStruct {
                         axum::routing::get(curseforge::status),
                     )
                     .route(
+                        "/content-installer/curseforge/categories",
+                        axum::routing::get(curseforge::categories),
+                    )
+                    .route(
                         "/content-installer/curseforge/description",
                         axum::routing::get(curseforge::description),
                     )

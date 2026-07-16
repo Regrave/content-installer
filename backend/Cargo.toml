@@ -2,7 +2,7 @@
 name = "gg_ir77_contentinstaller"
 description = "Minecraft Plugin & Mod Installer Extension"
 authors = ["Regrave"]
-version = "2.3.0"
+version = "2.4.0"
 edition = { workspace = true }
 
 [dependencies]

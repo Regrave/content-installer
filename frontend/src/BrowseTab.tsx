@@ -28,10 +28,12 @@ import {
   checkCurseForgeStatus,
   formatDownloads as cfFormatDownloads,
   formatSize as cfFormatSize,
+  getCurseForgeCategories,
   getCurseForgeDescription,
   getCurseForgeFiles,
   releaseTypeLabel,
   searchCurseForge,
+  type CurseForgeCategory,
   type CurseForgeFile,
   type CurseForgeProject,
 } from './curseforge.ts';
@@ -94,8 +96,10 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
   const [filterVersion, setFilterVersion] = useState<string | null>(detection.mcVersion);
   const [filterLoader, setFilterLoader] = useState<string | null>(null);
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
+  const [filterCfCategories, setFilterCfCategories] = useState<string[]>([]);
   const [versionOptionsList, setVersionOptionsList] = useState<string[]>([]);
   const [categoryOptionsList, setCategoryOptionsList] = useState<ModrinthCategoryTag[]>([]);
+  const [cfCategoryOptionsList, setCfCategoryOptionsList] = useState<CurseForgeCategory[]>([]);
 
   // Detail modal
   const [selectedProject, setSelectedProject] = useState<DisplayProject | null>(null);
@@ -130,6 +134,15 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
     getCategoryTags().then(setCategoryOptionsList).catch(() => {});
   }, [server.uuid]);
 
+  // CF categories are per-class, so reload and reset the selection when the class changes (#14)
+  useEffect(() => {
+    setFilterCfCategories([]);
+    if (!cfAvailable) return;
+    getCurseForgeCategories(server.uuid, cfClassId)
+      .then(setCfCategoryOptionsList)
+      .catch(() => setCfCategoryOptionsList([]));
+  }, [server.uuid, cfAvailable, cfClassId]);
+
   // Effective loader set: null = server default (smart compat expansion),
   // 'any' = no loader filter, anything else = exactly that loader. Memoized —
   // inline arrays here would change identity every render and loop the search effect.
@@ -154,6 +167,13 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
     const pool = exact.length > 0 ? exact : categoryOptionsList.filter((c) => c.project_type === 'mod');
     return [...new Set(pool.map((c) => c.name))].sort();
   }, [categoryOptionsList, contentType]);
+  const cfCategoryFilterOptions = useMemo(
+    () => cfCategoryOptionsList
+      .filter((c) => !c.isClass)
+      .map((c) => ({ value: String(c.id), label: c.name }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [cfCategoryOptionsList],
+  );
 
   // Modrinth search
   const doModrinthSearch = useCallback(async (q: string, sort: string, offset: number) => {
@@ -198,6 +218,7 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
       modLoaderType: effCfLoader > 0 ? effCfLoader : undefined,
       sortField: sortMap[sort] ?? 1,
       sortOrder: 'desc',
+      categoryIds: filterCfCategories.length > 0 ? filterCfCategories.map(Number) : undefined,
       index: offset,
       pageSize: 20,
     });
@@ -213,7 +234,7 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
       curseforgeProject: p,
     }));
     return { items, total: res.pagination.totalCount };
-  }, [server.uuid, cfClassId, filterVersion, filterLoader, cfModLoaderType]);
+  }, [server.uuid, cfClassId, filterVersion, filterLoader, filterCfCategories, cfModLoaderType]);
 
   const doSearch = useCallback(async (q: string, sort: string, offset: number) => {
     setLoading(true);
@@ -499,12 +520,24 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
           size='xs'
           w={130}
         />
-        {source === 'modrinth' && (
+        {source === 'modrinth' ? (
           <MultiSelect
             placeholder={filterCategories.length === 0 ? 'Categories' : undefined}
             data={categoryFilterOptions}
             value={filterCategories}
             onChange={setFilterCategories}
+            clearable
+            searchable
+            size='xs'
+            w={260}
+          />
+        ) : cfCategoryFilterOptions.length > 0 && (
+          <MultiSelect
+            placeholder={filterCfCategories.length === 0 ? 'Categories' : undefined}
+            data={cfCategoryFilterOptions}
+            value={filterCfCategories}
+            onChange={setFilterCfCategories}
+            maxValues={10}
             clearable
             searchable
             size='xs'

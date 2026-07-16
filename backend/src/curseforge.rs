@@ -42,6 +42,8 @@ pub struct SearchParams {
     sort_field: Option<u32>,
     #[serde(rename = "sortOrder")]
     sort_order: Option<String>,
+    #[serde(rename = "categoryIds")]
+    category_ids: Option<String>,
     index: Option<u32>,
     #[serde(rename = "pageSize")]
     page_size: Option<u32>,
@@ -74,8 +76,74 @@ pub async fn search(
     if let Some(ref so) = params.sort_order {
         url.push_str(&format!("&sortOrder={so}"));
     }
+    if let Some(ref cids) = params.category_ids {
+        // Comma-separated ids from the frontend; CF wants a stringified array,
+        // e.g. categoryIds=[423,426]. Max 10 per CF docs.
+        let ids: Vec<u32> = cids
+            .split(',')
+            .map(|s| s.trim().parse::<u32>())
+            .collect::<Result<_, _>>()
+            .map_err(|_| err(StatusCode::BAD_REQUEST, "Invalid categoryIds"))?;
+        if ids.len() > 10 {
+            return Err(err(StatusCode::BAD_REQUEST, "At most 10 categoryIds allowed"));
+        }
+        if !ids.is_empty() {
+            let list = ids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+            url.push_str(&format!("&categoryIds={}", urlencoding::encode(&format!("[{list}]"))));
+        }
+    }
     url.push_str(&format!("&index={}", params.index.unwrap_or(0)));
     url.push_str(&format!("&pageSize={}", params.page_size.unwrap_or(20)));
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("x-api-key", &api_key)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
+
+    if !status.is_success() {
+        return Err(err(
+            StatusCode::BAD_GATEWAY,
+            format!("CurseForge returned {status}: {body}"),
+        ));
+    }
+
+    Ok((
+        StatusCode::OK,
+        [("content-type", "application/json")],
+        body,
+    ))
+}
+
+// ---- Get categories ----
+
+#[derive(Deserialize)]
+pub struct CategoriesParams {
+    #[serde(rename = "classId")]
+    class_id: Option<u32>,
+}
+
+/// GET /content-installer/curseforge/categories
+pub async fn categories(
+    state: GetState,
+    _permissions: GetPermissionManager,
+    Query(params): Query<CategoriesParams>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let api_key = get_api_key(&state).await?;
+
+    let mut url = format!("{CF_BASE}/v1/categories?gameId={CF_MINECRAFT_GAME_ID}");
+    if let Some(cid) = params.class_id {
+        url.push_str(&format!("&classId={cid}"));
+    }
 
     let client = reqwest::Client::new();
     let resp = client

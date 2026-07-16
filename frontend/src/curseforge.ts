@@ -50,6 +50,15 @@ export interface CurseForgeFilesResponse {
   };
 }
 
+export interface CurseForgeCategory {
+  id: number;
+  name: string;
+  slug: string;
+  classId: number | null;
+  parentCategoryId: number | null;
+  isClass: boolean | null;
+}
+
 // ---- CurseForge class IDs ----
 export const CF_CLASS_MODS = 6;
 export const CF_CLASS_PLUGINS = 5;
@@ -75,6 +84,7 @@ export async function searchCurseForge(serverUuid: string, opts: {
   modLoaderType?: number;
   sortField?: number;
   sortOrder?: string;
+  categoryIds?: number[];
   index?: number;
   pageSize?: number;
 }): Promise<CurseForgeSearchResponse> {
@@ -88,6 +98,9 @@ export async function searchCurseForge(serverUuid: string, opts: {
   }
   if (opts.sortField) params.set('sortField', String(opts.sortField));
   if (opts.sortOrder) params.set('sortOrder', opts.sortOrder);
+  if (opts.categoryIds && opts.categoryIds.length > 0) {
+    params.set('categoryIds', opts.categoryIds.join(','));
+  }
   params.set('index', String(opts.index ?? 0));
   params.set('pageSize', String(opts.pageSize ?? 20));
 
@@ -125,6 +138,15 @@ export async function getCurseForgeDescription(serverUuid: string, modId: number
   if (!res.ok) return '';
   const data = await res.json();
   return data.data ?? '';
+}
+
+export async function getCurseForgeCategories(serverUuid: string, classId: number): Promise<CurseForgeCategory[]> {
+  const baseUrl = `/api/client/servers/${serverUuid}/content-installer/curseforge`;
+  const params = new URLSearchParams({ classId: String(classId) });
+  const res = await fetch(`${baseUrl}/categories?${params}`);
+  if (!res.ok) throw new Error(`CurseForge categories failed: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
 }
 
 export async function checkCurseForgeStatus(serverUuid: string): Promise<boolean> {
