@@ -143,6 +143,15 @@ export default function BrowseTab({ detection, contentType, installDir, onInstal
       .catch(() => setCfCategoryOptionsList([]));
   }, [server.uuid, cfAvailable, cfClassId]);
 
+  // Reset content-type-specific filters when switching tabs (#20). The loader
+  // filter is hidden on the datapacks tab, so a stale 'paper' or 'fabric' value
+  // would silently poison every subsequent search. Modrinth categories are also
+  // scoped per project type — plugin categories don't exist for datapacks etc.
+  useEffect(() => {
+    setFilterLoader(null);
+    setFilterCategories([]);
+  }, [contentType]);
+
   // Effective loader set: null = server default (smart compat expansion),
   // 'any' = no loader filter, anything else = exactly that loader. Memoized —
   // inline arrays here would change identity every render and loop the search effect.
