@@ -26,6 +26,50 @@ async fn get_api_key(state: &GetState) -> Result<String, (StatusCode, String)> {
     Ok(ext.curseforge_api_key.to_string())
 }
 
+/// Authenticated GET against the CurseForge API, returning the raw response body.
+///
+/// Upstream 401/403 means the configured key is wrong — a user-fixable setting, not a
+/// gateway failure — so it does not collapse into a 502 the way it used to (#22). 502 is
+/// kept for genuine transport errors so "bad gateway" still means "could not reach CurseForge".
+async fn cf_get(url: &str, api_key: &str) -> Result<String, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(url)
+        .header("x-api-key", api_key)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
+
+    if status.is_success() {
+        return Ok(body);
+    }
+
+    Err(match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "CurseForge rejected the API key. Check it under Admin -> Content Installer. \
+             Keys look like `$2a$10$...` and are silently truncated by unquoted shell, \
+             .env or compose files, which eats the `$2a` and `$10` as variables."
+                .to_string(),
+        ),
+        StatusCode::TOO_MANY_REQUESTS => err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "CurseForge rate limit reached. Try again in a moment.".to_string(),
+        ),
+        _ => err(
+            StatusCode::BAD_GATEWAY,
+            format!("CurseForge returned {status}: {body}"),
+        ),
+    })
+}
+
 // ---- Search ----
 
 #[derive(Deserialize)]
@@ -95,27 +139,7 @@ pub async fn search(
     url.push_str(&format!("&index={}", params.index.unwrap_or(0)));
     url.push_str(&format!("&pageSize={}", params.page_size.unwrap_or(20)));
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("x-api-key", &api_key)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
-
-    let status = resp.status();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
-
-    if !status.is_success() {
-        return Err(err(
-            StatusCode::BAD_GATEWAY,
-            format!("CurseForge returned {status}: {body}"),
-        ));
-    }
+    let body = cf_get(&url, &api_key).await?;
 
     Ok((
         StatusCode::OK,
@@ -145,27 +169,7 @@ pub async fn categories(
         url.push_str(&format!("&classId={cid}"));
     }
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("x-api-key", &api_key)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
-
-    let status = resp.status();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
-
-    if !status.is_success() {
-        return Err(err(
-            StatusCode::BAD_GATEWAY,
-            format!("CurseForge returned {status}: {body}"),
-        ));
-    }
+    let body = cf_get(&url, &api_key).await?;
 
     Ok((
         StatusCode::OK,
@@ -207,27 +211,7 @@ pub async fn files(
     url.push_str(&format!("index={}", params.index.unwrap_or(0)));
     url.push_str(&format!("&pageSize={}", params.page_size.unwrap_or(20)));
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("x-api-key", &api_key)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
-
-    let status = resp.status();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
-
-    if !status.is_success() {
-        return Err(err(
-            StatusCode::BAD_GATEWAY,
-            format!("CurseForge returned {status}: {body}"),
-        ));
-    }
+    let body = cf_get(&url, &api_key).await?;
 
     Ok((
         StatusCode::OK,
@@ -254,27 +238,7 @@ pub async fn description(
 
     let url = format!("{CF_BASE}/v1/mods/{}/description", params.mod_id);
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("x-api-key", &api_key)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("CurseForge request failed: {e}")))?;
-
-    let status = resp.status();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("Failed to read response: {e}")))?;
-
-    if !status.is_success() {
-        return Err(err(
-            StatusCode::BAD_GATEWAY,
-            format!("CurseForge returned {status}: {body}"),
-        ));
-    }
+    let body = cf_get(&url, &api_key).await?;
 
     Ok((
         StatusCode::OK,

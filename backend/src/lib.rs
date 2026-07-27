@@ -176,9 +176,14 @@ async fn admin_get_settings(
             "*".repeat(key.len())
         }
     };
+    // CurseForge keys are bcrypt-shaped (`$2a$10$...`). Anything that routes the key
+    // through an unquoted shell, .env or compose file eats `$2a` and `$10` as variable
+    // expansions and stores a silently truncated key, which CurseForge then rejects (#22).
+    let malformed = !ext.curseforge_api_key.is_empty() && !ext.curseforge_api_key.starts_with("$2a$");
     Ok(axum::Json(serde_json::json!({
         "curseforge_configured": !ext.curseforge_api_key.is_empty(),
         "curseforge_api_key_masked": masked,
+        "curseforge_api_key_malformed": malformed,
     })))
 }
 
