@@ -97,11 +97,42 @@ PROTECTED = (
     "ops.json",
     "eula.txt",
     ".mcvc-type.json",
+    ".content-installer.log",
 )
+
+LOG_PATH = WORKSPACE / ".content-installer.log"
 
 
 def log(msg):
-    print(f"[content-installer] {msg}", flush=True)
+    line = f"[content-installer] {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def reset_log():
+    try:
+        LOG_PATH.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+REMOVED_CLIENT_ONLY = []
+
+
+def log_summary(name, version, mc, loader_type, total, downloaded, failures):
+    log("--- install summary ---")
+    log(f"modpack: {name} {version}")
+    log(f"minecraft: {mc} | loader: {loader_type}")
+    log(f"downloads: {downloaded}/{total} succeeded, {len(failures)} skipped/failed")
+    for item in failures:
+        log(f"not installed: {item}")
+    log(f"client-only mods removed ({len(REMOVED_CLIENT_ONLY)}):")
+    for item in REMOVED_CLIENT_ONLY:
+        log(f"removed: {item}")
 
 
 def download(url, dest, headers=None):
@@ -363,7 +394,11 @@ def mcjars_zip(kind, mc, requested):
 
 
 def apply_overrides(src_dir):
-    src = WORKSPACE / src_dir
+    src = (WORKSPACE / src_dir).resolve()
+    base = WORKSPACE.resolve()
+    if not (src == base or str(src).startswith(str(base) + os.sep)):
+        log(f"skipping override dir outside workspace: {src_dir}")
+        return
     if not src.exists():
         return
     for entry in sorted(src.iterdir()):
@@ -446,6 +481,7 @@ def remove_client_only_mods():
     for jar, reason in candidates.items():
         log(f"removing client-only mod {jar.name} (caught by {reason})")
         jar.unlink(missing_ok=True)
+        REMOVED_CLIENT_ONLY.append(jar.name)
 
 
 def write_marker(loader_type, mc, modpack_name, extra=None):
@@ -481,6 +517,7 @@ def allowed_url(url):
 
 
 def main():
+    reset_log()
     log(f"starting {MODPACK_NAME} ({MODPACK_VERSION})")
     log(f"downloading modpack from {MRPACK_URL}")
     if not allowed_url(MRPACK_URL):
@@ -506,15 +543,18 @@ def main():
     files = [f for f in index.get("files", []) if (f.get("env") or {}).get("server") != "unsupported"]
     total = len(files)
     skipped = 0
+    failures = []
     for i, f in enumerate(files, 1):
         path = f.get("path") or ""
         if not is_safe(path):
             log(f"skipping invalid path {path}")
             skipped += 1
+            failures.append(f"{path}: invalid path")
             continue
         if is_protected(path):
             log(f"skipping protected path {path}")
             skipped += 1
+            failures.append(f"{path}: protected path")
             continue
         url = next((u for u in f.get("downloads", []) if allowed_url(u)), None)
         if not url:
@@ -543,6 +583,7 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
     (WORKSPACE / "_mrpack_install.zip").unlink(missing_ok=True)
     log(f"modpack installation complete ({total} files, {skipped} skipped)")
+    log_summary(index.get("name", ""), index.get("version", ""), mc, loader_type, total, total - skipped, failures)
 
 
 if __name__ == "__main__":
@@ -667,6 +708,7 @@ def main():
         raise RuntimeError("CurseForge API key not configured")
     if not allowed_cf_url(CF_ZIP_URL):
         raise RuntimeError(f"modpack URL host not in allowlist: {CF_ZIP_URL}")
+    reset_log()
 
     log(f"starting {MODPACK_NAME} ({MODPACK_VERSION})")
     log(f"downloading modpack from {CF_ZIP_URL}")
@@ -691,6 +733,7 @@ def main():
     total = len(required)
     downloaded = 0
     skipped = 0
+    failures = []
     files_by_id = get_cf_files([cf_file.get("fileID") for cf_file in required])
     modrinth_fallbacks = get_modrinth_fallbacks(files_by_id.values())
     for cf_file in required:
@@ -720,11 +763,16 @@ def main():
             sha1 = curseforge_sha1(hashes)
             url = modrinth_fallbacks.get(sha1)
             if not url:
-                raise RuntimeError(
-                    f"required file {filename} blocks third-party downloads on CurseForge and "
-                    "no identical Modrinth file was found. Download it manually from "
-                    f"CurseForge, upload it to mods/{filename}, then retry with Clean install off"
+                log(f"skipping restricted file {filename}: blocks third-party downloads and "
+                    "no identical Modrinth file was found; upload it manually to "
+                    f"mods/{filename} then reinstall with Clean install off")
+                skipped += 1
+                project_id = file_info.get("projectId")
+                failures.append(
+                    f"{filename}: restricted on CurseForge, not on Modrinth; upload to mods/ manually"
+                    + (f" (https://www.curseforge.com/minecraft/mc-mods/{project_id}/files/{fid})" if project_id else "")
                 )
+                continue
             log(f"using identical Modrinth copy for restricted CurseForge file: {filename}")
         elif not allowed_cf_url(url):
             raise RuntimeError(f"required file {filename} returned an untrusted download host")
@@ -764,6 +812,7 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
     (WORKSPACE / "_cf_modpack.zip").unlink(missing_ok=True)
     log(f"modpack installation complete ({downloaded} files, {skipped} skipped)")
+    log_summary(manifest.get("name", ""), manifest.get("version", ""), mc, loader_type, total, downloaded, failures)
 
 
 if __name__ == "__main__":
